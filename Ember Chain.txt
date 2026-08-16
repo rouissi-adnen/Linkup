@@ -1,0 +1,945 @@
+    setTimeout(() => showTimeUpModal(), 500);
+}
+
+/* Modals */
+function hideAllModals() {
+  ['timesup-modal','game-menu-modal','pet-shop-modal','gear-shop-modal',
+   'wheel-modal','challenge-modal','leaderboard-modal'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.add('hidden');
+  });
+  document.getElementById('app').classList.remove('blurred');
+}
+
+/* ============================================
+   2.4 SHAREABLE RESULT CARD (NEW)
+   --------------------------------------------
+   Build a polished, screenshot-ready card as a styled div, plus a Canvas
+   PNG export. No backend needed — this is the primary virality feature.
+   ============================================ */
+function buildResultCard() {
+  const card = document.getElementById('result-card');
+  if (!card) return;
+  const duration = Math.round((Date.now() - runStartTime) / 1000);
+  const modeLabel = currentMode === 'challenge'
+    ? `DAILY CHALLENGE · ${getUTCDateKey()}`
+    : 'FREEPLAY';
+
+  card.innerHTML = `
+    <div class="rc-mode">${modeLabel}</div>
+    <div class="rc-title">Ember Chain</div>
+    <div class="rc-score">${score}</div>
+    <div class="rc-score-lbl">FINAL SCORE</div>
+    <div class="rc-grid">
+      <div class="rc-cell"><div class="rc-num">${maxCombo}x</div><div class="rc-lbl">MAX COMBO</div></div>
+      <div class="rc-cell"><div class="rc-num">${capsulesFilledThisRun}</div><div class="rc-lbl">CAPSULE SETS</div></div>
+      <div class="rc-cell"><div class="rc-num">${duration}s</div><div class="rc-lbl">DURATION</div></div>
+    </div>
+    <div class="rc-foot">Tier: ${(TIERS.find(t=>t.id===currentTierId)||TIERS[0]).name} · Rating ${playerRating}</div>
+  `;
+
+  // Sprinkle a few particle accents for the screenshot.
+  const sparkColors = ['#ff6b9d','#ffd93d','#4ade80','#22d3ee','#a855f7'];
+  for (let i = 0; i < 8; i++) {
+    const s = document.createElement('div');
+    s.className = 'rc-spark';
+    s.style.background = pick(sparkColors);
+    s.style.left = randFloat(6, 92) + '%';
+    s.style.top = randFloat(8, 88) + '%';
+    s.style.transform = `scale(${randFloat(0.6,1.6)})`;
+    card.appendChild(s);
+  }
+
+  // Stash a snapshot of the numbers for the PNG exporter.
+  card.dataset.snapshot = JSON.stringify({
+    mode: modeLabel, score, maxCombo,
+    capsuleSets: capsulesFilledThisRun, duration,
+    tier: (TIERS.find(t=>t.id===currentTierId)||TIERS[0]).name, rating: playerRating,
+  });
+}
+
+/* Rasterize the result card to a downloadable PNG via Canvas (NEW - 2.4). */
+function saveResultCardImage() {
+  const card = document.getElementById('result-card');
+  if (!card || !card.dataset.snapshot) return;
+  const data = JSON.parse(card.dataset.snapshot);
+  const canvas = document.getElementById('export-canvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+
+  // Background gradient (matches the card's cosmic look).
+  const bg = ctx.createLinearGradient(0, 0, W, H);
+  bg.addColorStop(0, '#241b3a');
+  bg.addColorStop(0.45, '#3b2a5e');
+  bg.addColorStop(1, '#5a2a5e');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // Top rainbow bar.
+  const bar = ctx.createLinearGradient(0, 0, W, 0);
+  ['#ff6b9d','#ffd93d','#4ade80','#22d3ee','#a855f7'].forEach((c, i, a) => bar.addColorStop(i/(a.length-1), c));
+  ctx.fillStyle = bar;
+  ctx.fillRect(0, 0, W, 14);
+
+  ctx.textAlign = 'center';
+
+  // Mode pill text.
+  ctx.fillStyle = '#e9d5ff';
+  ctx.font = '600 22px Quicksand, sans-serif';
+  ctx.fillText(data.mode, W/2, 80);
+
+  // Title.
+  const titleGrad = ctx.createLinearGradient(W/2-160, 0, W/2+160, 0);
+  titleGrad.addColorStop(0, '#ff6b9d');
+  titleGrad.addColorStop(0.5, '#ffd93d');
+  titleGrad.addColorStop(1, '#22d3ee');
+  ctx.fillStyle = titleGrad;
+  ctx.font = '700 56px "Fredoka", Quicksand, sans-serif';
+  ctx.fillText('Ember Chain', W/2, 160);
+
+  // Score.
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '700 130px "Fredoka", Quicksand, sans-serif';
+  ctx.fillText(String(data.score), W/2, 320);
+  ctx.fillStyle = '#c4b5e0';
+  ctx.font = '700 26px Quicksand, sans-serif';
+  ctx.fillText('FINAL SCORE', W/2, 365);
+
+  // Stat trio.
+  const cells = [
+    { num: data.maxCombo + 'x', lbl: 'MAX COMBO' },
+    { num: data.capsuleSets, lbl: 'CAPSULE SETS' },
+    { num: data.duration + 's', lbl: 'DURATION' },
+  ];
+  const colW = W / 3;
+  cells.forEach((cell, i) => {
+    const cx = colW * i + colW/2;
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '700 52px "Fredoka", Quicksand, sans-serif';
+    ctx.fillText(String(cell.num), cx, 500);
+    ctx.fillStyle = '#b8a5d8';
+    ctx.font = '700 22px Quicksand, sans-serif';
+    ctx.fillText(cell.lbl, cx, 540);
+  });
+
+  // Footer tier/rating.
+  ctx.fillStyle = '#9d8ac0';
+  ctx.font = '600 26px Quicksand, sans-serif';
+  ctx.fillText(`Tier: ${data.tier}  ·  Rating ${data.rating}`, W/2, 640);
+
+  ctx.fillStyle = '#7c6aa0';
+  ctx.font = '600 22px Quicksand, sans-serif';
+  ctx.fillText('Match. Chain. Ascend.  #EmberChain', W/2, 720);
+
+  // Trigger download.
+  try {
+    const url = canvas.toDataURL('image/png');
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `emberchain_${currentMode}_${data.score}.png`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    Sound.playClick();
+    showRewardToast(' Image saved!');
+  } catch (e) {
+    showRewardToast(' Screenshot the card instead!');
+  }
+}
+
+function showTimeUpModal() {
+  /* Shareable result card (Section 2.4). */
+  buildResultCard();
+
+  /* Run stat breakdown incl. peak Flow tier (Section 3.2/3.3). */
+  const statsEl = document.getElementById('result-stats');
+  if (statsEl) {
+    const flowNames = ['', 'FLOW', 'RUSH', 'OVERDRIVE'];
+    statsEl.innerHTML = `
+      <div class="result-stat"><div class="rs-num">${score}</div><div class="rs-lbl">SCORE</div></div>
+      <div class="result-stat"><div class="rs-num">${maxCombo}</div><div class="rs-lbl">MAX COMBO</div></div>
+      <div class="result-stat"><div class="rs-num">${flowNames[peakFlowTier] || ''}</div><div class="rs-lbl">PEAK FLOW</div></div>
+    `;
+  }
+
+  /* Near-miss encouraging callout (Section 3.3). */
+  const nmEl = document.getElementById('near-miss-callout');
+  if (nmEl) {
+    if (bestNearMiss >= 4) {
+      nmEl.style.display = 'flex';
+      nmEl.innerHTML = `<span class="nm-icon"></span><span>So close! You were one move away from a <strong>${bestNearMiss}-candy</strong> match. Spot it next run and it's yours!</span>`;
+    } else {
+      nmEl.style.display = 'none';
+    }
+  }
+
+  /* Only offer "buy time" in freeplay — challenge runs must stay fair
+     (Section 7 guardrail: no paid advantage in Daily Challenge). */
+  const buyTimeBtn = document.getElementById('buy-time-btn');
+  if (buyTimeBtn) buyTimeBtn.style.display = (currentMode === 'challenge') ? 'none' : 'block';
+
+  /* Show replay button only if a log was recorded this run (Section 2.3). */
+  const watchBtn = document.getElementById('watch-replay-btn');
+  if (watchBtn) watchBtn.style.display = replayLog.length ? 'block' : 'none';
+
+  document.getElementById('timesup-modal').classList.remove('hidden');
+  document.getElementById('app').classList.add('blurred');
+}
+function hideTimeUpModal() {
+  document.getElementById('timesup-modal').classList.add('hidden');
+  document.getElementById('app').classList.remove('blurred');
+}
+function showGameMenu() {
+  document.getElementById('game-menu-modal').classList.remove('hidden');
+  document.getElementById('app').classList.add('blurred');
+  stopTimer();
+  document.getElementById('sound-toggle-menu').textContent = Sound.enabled ? ' Sound ON' : ' Sound OFF';
+}
+function hideGameMenu() {
+  document.getElementById('game-menu-modal').classList.add('hidden');
+  document.getElementById('app').classList.remove('blurred');
+  if (gameActive) startTimer();
+}
+function showStartScreen() {
+  document.getElementById('start-screen').classList.remove('hidden');
+  const startBest = document.getElementById('start-best');
+  const startLevel = document.getElementById('start-level');
+  const startGames = document.getElementById('start-games');
+  if (startBest) startBest.textContent = bestScore;
+  if (startLevel) startLevel.textContent = playerLevel;
+  if (startGames) startGames.textContent = totalGames;
+  /* Show "watch best replay" only if one exists (Section 2.3). */
+  const rBtn = document.getElementById('start-replay-btn');
+  if (rBtn) rBtn.style.display = bestFreeplayReplay ? 'block' : 'none';
+  updateTierBadge();
+}
+function hideStartScreen() { document.getElementById('start-screen').classList.add('hidden'); }
+
+function renderPetShop() {
+  const grid = document.getElementById('pet-shop-grid');
+  grid.innerHTML = '';
+  petsList.forEach(pet => {
+    const card = document.createElement('div');
+    card.className = `shop-card ${pet.id === currentPetId ? 'equipped' : ''}`;
+    let priceHTML = '';
+    if (pet.owned) {
+      priceHTML = pet.id === currentPetId
+        ? `<div class="shop-card-price owned"> EQUIPPED</div>`
+        : `<div class="shop-card-price owned"> EQUIP</div>`;
+    } else priceHTML = `<div class="shop-card-price"><span class="coin-icon"></span> ${pet.price}</div>`;
+    card.innerHTML = `
+      <div class="shop-card-icon"><img src="${pet.imgUrl}" alt="${pet.name}"></div>
+      <div class="shop-card-name">${pet.name}</div>
+      <div class="shop-card-desc">${pet.desc}</div>
+      ${priceHTML}
+    `;
+    card.addEventListener('click', () => {
+      Sound.playClick();
+      if (pet.owned) {
+        currentPetId = pet.id;
+        updatePetIcon(); renderPetShop(); updateSynergyInfo(); saveData();
+      } else if (coins >= pet.price) {
+        coins -= pet.price; pet.owned = true; currentPetId = pet.id;
+        updateCoins(); updatePetIcon(); renderPetShop(); updateSynergyInfo();
+        Sound.playStart(); checkAchievements(); saveData();
+      } else {
+        card.style.animation = 'shake 0.35s ease';
+        Sound.playInvalid();
+        setTimeout(() => card.style.animation = '', 400);
+      }
+    });
+    grid.appendChild(card);
+  });
+}
+
+/* GEAR SHOP with SLOT PICKER (Section 3.1) */
+function renderSlotPicker() {
+  const picker = document.getElementById('slot-picker');
+  if (!picker) return;
+  picker.innerHTML = '';
+  for (let i = 0; i < GEAR_SLOTS; i++) {
+    const id = gearLoadout[i] || 'none';
+    const g = gearList.find(x => x.id === id);
+    const name = (g && g.id !== 'none') ? g.name : 'Empty';
+    const tab = document.createElement('div');
+    tab.className = 'slot-tab' + (i === activeGearSlot ? ' active' : '');
+    tab.innerHTML = `<span>Slot ${i + 1}</span><span class="slot-item ${id==='none'?'empty':''}">${name}</span>`;
+    tab.addEventListener('click', () => {
+      Sound.playClick();
+      activeGearSlot = i;
+      renderSlotPicker();
+      renderGearShop();
+    });
+    picker.appendChild(tab);
+  }
+}
+
+function renderGearShop() {
+  renderSlotPicker();
+  const grid = document.getElementById('gear-shop-grid');
+  grid.innerHTML = '';
+  gearList.forEach(gear => {
+    const inActiveSlot = gearLoadout[activeGearSlot] === gear.id;
+    const equippedElsewhere = gearLoadout.includes(gear.id) && gear.id !== 'none' && !inActiveSlot;
+    const card = document.createElement('div');
+    card.className = `shop-card ${inActiveSlot ? 'equipped' : ''}`;
+    let priceHTML = '';
+    if (gear.owned) {
+      if (inActiveSlot) priceHTML = `<div class="shop-card-price owned"> IN SLOT ${activeGearSlot + 1}</div>`;
+      else if (equippedElsewhere) priceHTML = `<div class="shop-card-price owned"> MOVE HERE</div>`;
+      else priceHTML = `<div class="shop-card-price owned"> EQUIP</div>`;
+    } else priceHTML = `<div class="shop-card-price"><span class="coin-icon"></span> ${gear.price}</div>`;
+    const tradeoffHTML = gear.tradeoff ? `<div class="shop-card-tradeoff">${gear.tradeoff}</div>` : '';
+    card.innerHTML = `
+      <div class="shop-card-icon" style="font-size:28px;background:linear-gradient(135deg,#e0c3fc,#8ec5fc);color:white;">${gear.icon || ''}</div>
+      <div class="shop-card-name">${gear.name}</div>
+      <div class="shop-card-desc">${gear.desc}</div>
+      ${tradeoffHTML}
+      ${priceHTML}
+    `;
+    card.addEventListener('click', () => {
+      Sound.playClick();
+      if (gear.owned) {
+        equipGearInSlot(gear.id, activeGearSlot);
+        renderGearShop(); updateSynergyInfo(); saveData();
+      } else if (coins >= gear.price) {
+        coins -= gear.price; gear.owned = true;
+        equipGearInSlot(gear.id, activeGearSlot);
+        updateCoins(); renderGearShop(); updateSynergyInfo();
+        Sound.playStart(); checkAchievements(); saveData();
+      } else {
+        card.style.animation = 'shake 0.35s ease';
+        Sound.playInvalid();
+        setTimeout(() => card.style.animation = '', 400);
+      }
+    });
+    grid.appendChild(card);
+  });
+  updateSynergyInfo();
+}
+
+function equipGearInSlot(gearId, slot) {
+  if (gearId !== 'none') {
+    for (let i = 0; i < GEAR_SLOTS; i++) {
+      if (i !== slot && gearLoadout[i] === gearId) gearLoadout[i] = 'none';
+    }
+  }
+  gearLoadout[slot] = (gearLoadout[slot] === gearId) ? 'none' : gearId;
+}
+
+function updateSynergyInfo() {
+  const el = document.getElementById('synergy-info');
+  if (!el) return;
+  const synergy = getActiveSynergy();
+  if (synergy) {
+    el.textContent = ` Synergy: ${synergy.name}  ${synergy.bonus}`;
+    el.style.color = '#ff6b9d';
+  } else {
+    el.textContent = 'Match a pet element to any equipped gear for a synergy bonus!';
+    el.style.color = '#7c3aed';
+  }
+}
+function updatePetIcon() {
+  const pet = petsList.find(p => p.id === currentPetId);
+  if (pet) {
+    const p1 = document.getElementById('pet-icon');
+    const p2 = document.getElementById('header-pet');
+    p1.innerHTML = `<img src="${pet.imgUrl}" alt="${pet.name}">`;
+    p1.style.background = 'none'; p1.style.border = 'none';
+    p2.innerHTML = `<img src="${pet.imgUrl}" alt="${pet.name}">`;
+    p2.style.background = 'none';
+  }
+}
+function showPetShop() {
+  document.getElementById('pet-shop-modal').classList.remove('hidden');
+  document.getElementById('app').classList.add('blurred');
+  renderPetShop();
+  if (gameActive) stopTimer();
+}
+function hidePetShop() {
+  document.getElementById('pet-shop-modal').classList.add('hidden');
+  document.getElementById('app').classList.remove('blurred');
+  if (gameActive) startTimer();
+}
+function showGearShop() {
+  document.getElementById('gear-shop-modal').classList.remove('hidden');
+  document.getElementById('app').classList.add('blurred');
+  renderGearShop();
+  if (gameActive) stopTimer();
+}
+function hideGearShop() {
+  document.getElementById('gear-shop-modal').classList.add('hidden');
+  document.getElementById('app').classList.remove('blurred');
+  if (gameActive) startTimer();
+}
+
+/* ============================================
+   WHEEL OF FORTUNE
+   ============================================ */
+function buildWheelSVG() {
+  const svg = document.getElementById('wheel-svg');
+  if (!svg) return;
+  svg.innerHTML = '';
+  const cx = 100, cy = 100, r = 95;
+  const n = WHEEL_PRIZES.length;
+  const step = (Math.PI * 2) / n;
+
+  const outer = document.createElementNS('http://www.w3.org/2000/svg','circle');
+  outer.setAttribute('cx', cx); outer.setAttribute('cy', cy);
+  outer.setAttribute('r', r + 3);
+  outer.setAttribute('fill', '#fff');
+  outer.setAttribute('stroke', '#a78bfa');
+  outer.setAttribute('stroke-width', '3');
+  svg.appendChild(outer);
+
+  for (let i = 0; i < n; i++) {
+    const startA = -Math.PI/2 + i * step;
+    const endA = startA + step;
+    const x1 = cx + r * Math.cos(startA);
+    const y1 = cy + r * Math.sin(startA);
+    const x2 = cx + r * Math.cos(endA);
+    const y2 = cy + r * Math.sin(endA);
+    const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+    const largeArc = step > Math.PI ? 1 : 0;
+    const d = `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2} Z`;
+    path.setAttribute('d', d);
+    path.setAttribute('fill', WHEEL_PRIZES[i].color);
+    path.setAttribute('stroke', '#fff');
+    path.setAttribute('stroke-width', '2');
+    svg.appendChild(path);
+
+    const midA = startA + step / 2;
+    const tr = r * 0.62;
+    const tx = cx + tr * Math.cos(midA);
+    const ty = cy + tr * Math.sin(midA);
+    const text = document.createElementNS('http://www.w3.org/2000/svg','text');
+    text.setAttribute('x', tx);
+    text.setAttribute('y', ty);
+    text.setAttribute('text-anchor', 'middle');
+    text.setAttribute('dominant-baseline', 'middle');
+    text.setAttribute('font-size', WHEEL_PRIZES[i].label.length > 6 ? '9' : '12');
+    const degrees = (midA * 180 / Math.PI) + 90;
+    text.setAttribute('transform', `rotate(${degrees}, ${tx}, ${ty})`);
+    const parts = WHEEL_PRIZES[i].label.split(' ');
+    if (parts.length > 1) {
+      const t1 = document.createElementNS('http://www.w3.org/2000/svg','tspan');
+      t1.setAttribute('x', tx); t1.setAttribute('dy', '-0.5em'); t1.textContent = parts[0];
+      const t2 = document.createElementNS('http://www.w3.org/2000/svg','tspan');
+      t2.setAttribute('x', tx); t2.setAttribute('dy', '1.1em'); t2.textContent = parts.slice(1).join(' ');
+      text.appendChild(t1); text.appendChild(t2);
+    } else {
+      text.textContent = WHEEL_PRIZES[i].label;
+    }
+    svg.appendChild(text);
+  }
+}
+
+let wheelSpinning = false;
+let wheelCurrentRotation = 0;
+
+function canSpinWheel() { return (Date.now() - lastWheelSpin) >= WHEEL_COOLDOWN_MS; }
+function canClaimDaily() { return (Date.now() - lastDailyClaim) >= DAILY_COOLDOWN_MS; }
+function formatCountdown(ms) {
+  if (ms <= 0) return 'Ready!';
+  const totalSec = Math.floor(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+
+function updateEventUI() {
+  const wheelBtn = document.getElementById('wheel-reward-btn');
+  const wheelSub = document.getElementById('wheel-subtitle');
+  const wheelCountdown = document.getElementById('wheel-countdown');
+  const dailyBtn = document.getElementById('daily-reward-btn');
+  const dailySub = document.getElementById('daily-subtitle');
+
+  const wheelRemain = WHEEL_COOLDOWN_MS - (Date.now() - lastWheelSpin);
+  if (canSpinWheel()) {
+    wheelBtn.disabled = false;
+    wheelBtn.textContent = 'GET REWARD';
+    wheelBtn.classList.remove('event-btn-small');
+    wheelSub.textContent = 'Free spin available!';
+    if (wheelCountdown) wheelCountdown.textContent = ' Ready to spin!';
+  } else {
+    wheelBtn.disabled = true;
+    wheelBtn.classList.add('event-btn-small');
+    wheelBtn.textContent = formatCountdown(wheelRemain);
+    wheelSub.textContent = 'Next spin in ' + formatCountdown(wheelRemain);
+    if (wheelCountdown) wheelCountdown.textContent = ' Next spin: ' + formatCountdown(wheelRemain);
+  }
+
+  const dailyRemain = DAILY_COOLDOWN_MS - (Date.now() - lastDailyClaim);
+  if (canClaimDaily()) {
+    dailyBtn.disabled = false;
+    dailyBtn.textContent = 'GET REWARD';
+    dailyBtn.classList.remove('event-btn-small');
+    dailySub.textContent = 'Claim your 1000 coins!';
+  } else {
+    dailyBtn.disabled = true;
+    dailyBtn.classList.add('event-btn-small');
+    dailyBtn.textContent = formatCountdown(dailyRemain);
+    dailySub.textContent = 'Next reward in ' + formatCountdown(dailyRemain);
+  }
+
+  /* Daily Challenge countdown to UTC midnight (NEW - Section 2.2). */
+  const challengeSub = document.getElementById('challenge-subtitle');
+  const challengeCountdownEl = document.getElementById('challenge-countdown');
+  if (challengeSub) {
+    challengeSub.textContent = 'Resets in ' + formatCountdown(msUntilUTCMidnight());
+  }
+  if (challengeCountdownEl) {
+    challengeCountdownEl.textContent = ' Resets in ' + formatCountdown(msUntilUTCMidnight());
+  }
+}
+
+function startEventTicker() {
+  if (eventTickerInterval) clearInterval(eventTickerInterval);
+  updateEventUI();
+  eventTickerInterval = setInterval(updateEventUI, 1000);
+}
+
+function showWheelModal() {
+  document.getElementById('wheel-modal').classList.remove('hidden');
+  document.getElementById('app').classList.add('blurred');
+  buildWheelSVG();
+  updateEventUI();
+  const spinBtn = document.getElementById('wheel-spin-btn');
+  if (canSpinWheel()) {
+    spinBtn.disabled = false;
+    spinBtn.classList.remove('disabled');
+    spinBtn.textContent = 'SPIN';
+  } else {
+    spinBtn.disabled = true;
+    spinBtn.classList.add('disabled');
+    spinBtn.textContent = 'WAIT';
+  }
+  if (gameActive) stopTimer();
+}
+function hideWheelModal() {
+  document.getElementById('wheel-modal').classList.add('hidden');
+  document.getElementById('app').classList.remove('blurred');
+  if (gameActive) startTimer();
+}
+
+function spinWheel() {
+  if (wheelSpinning) return;
+  if (!canSpinWheel()) { Sound.playInvalid(); return; }
+  wheelSpinning = true;
+  const spinBtn = document.getElementById('wheel-spin-btn');
+  spinBtn.disabled = true;
+  spinBtn.textContent = '...';
+  Sound.playSpin();
+
+  const n = WHEEL_PRIZES.length;
+  const step = 360 / n;
+  const prizeIdx = rand(0, n - 1);
+  const targetAngle = -(prizeIdx * step + step / 2);
+  const currentMod = ((wheelCurrentRotation % 360) + 360) % 360;
+  const targetMod = ((targetAngle % 360) + 360) % 360;
+  let deltaForward = (targetMod - currentMod + 360) % 360;
+  const extraSpins = 5;
+  const totalDelta = deltaForward + 360 * extraSpins;
+  wheelCurrentRotation += totalDelta;
+
+  const svg = document.getElementById('wheel-svg');
+  svg.style.transform = `rotate(${wheelCurrentRotation}deg)`;
+
+  setTimeout(() => {
+    const prize = WHEEL_PRIZES[prizeIdx];
+    applyWheelPrize(prize);
+    lastWheelSpin = Date.now();
+    saveData();
+    Sound.playWin();
+    wheelSpinning = false;
+    spinBtn.disabled = true;
+    spinBtn.classList.add('disabled');
+    spinBtn.textContent = 'WAIT';
+    updateEventUI();
+  }, 4100);
+}
+
+function applyWheelPrize(prize) {
+  if (prize.type === 'coins') {
+    coins += prize.amount;
+    updateCoins();
+    showRewardToast(` +${prize.amount} `);
+  } else if (prize.type === 'infinity') {
+    infinityTimeUntil = Date.now() + prize.amount * 1000;
+    updateTimer();
+    showRewardToast(` INFINITY TIME 1H!`);
+  }
+}
+
+function showRewardToast(text) {
+  const el = document.createElement('div');
+  el.className = 'reward-toast';
+  el.textContent = text;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 2300);
+  for (let i = 0; i < 15; i++) {
+    setTimeout(() => {
+      createSparkleTrail(
+        window.innerWidth / 2 + randFloat(-100, 100),
+        window.innerHeight / 2 + randFloat(-50, 50),
+        pick(['#ffd700', '#ff6b9d', '#a78bfa'])
+      );
+    }, i * 40);
+  }
+}
+
+function claimDailyReward() {
+  if (!canClaimDaily()) { Sound.playInvalid(); return; }
+  coins += DAILY_REWARD;
+  updateCoins();
+  lastDailyClaim = Date.now();
+  saveData();
+  Sound.playWin();
+  showRewardToast(` +${DAILY_REWARD}  DAILY!`);
+  updateEventUI();
+}
+
+/* ============================================
+   2.2 DAILY CHALLENGE MODAL (NEW)
+   ============================================ */
+function showChallengeModal() {
+  const today = getUTCDateKey();
+  // Reset today's tracking if the calendar day rolled over.
+  if (challengeDate !== today) { challengeDate = today; challengeBestScore = 0; challengeAttempts = 0; saveData(); }
+
+  document.getElementById('challenge-date').textContent = `Today's board · ${today} (UTC)`;
+  document.getElementById('challenge-best-score').textContent = challengeBestScore;
+  document.getElementById('challenge-attempts').textContent = challengeAttempts;
+  document.getElementById('challenge-countdown').textContent = ' Resets in ' + formatCountdown(msUntilUTCMidnight());
+
+  /* Ghost toggle only meaningful if a best replay exists for today. */
+  const ghostToggle = document.getElementById('ghost-toggle');
+  const hasTodayGhost = bestChallengeReplay && bestChallengeReplay.date === today && bestChallengeReplay.log.length;
+  ghostToggle.disabled = !hasTodayGhost;
+  ghostToggle.checked = hasTodayGhost ? ghostEnabled : false;
+  ghostToggle.parentElement.style.opacity = hasTodayGhost ? '1' : '0.5';
+
+  /* Watch-replay button for today's best challenge run. */
+  const rBtn = document.getElementById('challenge-replay-btn');
+  rBtn.style.display = hasTodayGhost ? 'block' : 'none';
+
+  document.getElementById('challenge-modal').classList.remove('hidden');
+  document.getElementById('app').classList.add('blurred');
+  if (gameActive) stopTimer();
+}
+function hideChallengeModal() {
+  document.getElementById('challenge-modal').classList.add('hidden');
+  document.getElementById('app').classList.remove('blurred');
+  if (gameActive) startTimer();
+}
+
+/* ============================================
+   EVENT CAROUSEL SCROLL DOTS
+   ============================================ */
+function setupEventCarousel() {
+  const carousel = document.getElementById('events-carousel');
+  const dots = document.querySelectorAll('.event-dot');
+  if (!carousel) return;
+  carousel.addEventListener('scroll', () => {
+    const idx = Math.round(carousel.scrollLeft / carousel.clientWidth);
+    dots.forEach((d, i) => d.classList.toggle('active', i === idx));
+  });
+  dots.forEach(dot => {
+    dot.addEventListener('click', () => {
+      const idx = parseInt(dot.dataset.idx);
+      carousel.scrollTo({ left: idx * carousel.clientWidth, behavior: 'smooth' });
+    });
+  });
+}
+
+/* ============================================
+   Game Control
+   ============================================ */
+/* Unified run starter that both freeplay and challenge funnel through.
+   `mode` = 'freeplay' | 'challenge'. Challenge arms the seeded RNG so the
+   generated board & capsules match everyone else's for the day (Section 2.2). */
+function startGame(mode = 'freeplay') {
+  Sound.init(); Sound.resume(); Sound.playStart();
+  hideStartScreen();
+  hideChallengeModal();
+  currentMode = mode;
+
+  /* 2.2 Arm/disarm the seeded RNG for the initial board generation. */
+  if (mode === 'challenge') {
+    const key = getUTCDateKey();
+    currentRunSeed = hashStringToSeed('EmberChain-' + key);
+    seededRNG = mulberry32(currentRunSeed);
+    document.getElementById('board-frame').classList.add('challenge-mode');
+  } else {
+    currentRunSeed = null;
+    seededRNG = null;
+    document.getElementById('board-frame').classList.remove('challenge-mode');
+  }
+
+  score = 0;
+  /* 2.2 Challenge start time is fixed & identical for everyone (fair). Pets
+     that grant bonus start time are disabled in challenge to keep it even. */
+  let initialTime = GAME_TIME;
+  if (mode === 'freeplay') {
+    if (currentPetId === 'unicorn') initialTime += 10;
+    if (currentPetId === 'wizard_dog') initialTime += 30;
+  }
+  timeLeft = initialTime;
+  combo = 1; processing = false; gameActive = true; isReplaying = false;
+  resetFlow();
+  bestNearMiss = 0;
+  lastAchievedMatch = 0;
+  capsulesFilledThisRun = 0;
+
+  /* 2.3 Fresh replay recording for this run. */
+  replayLog = [];
+  runStartTime = Date.now();
+
+  updateScore(); updateTimer(); updateCombo(); updateCoins(); updateXPDisplay(); updateBest();
+  calculateLayout();
+  board = generateBoard();
+
+  /* 2.3 For freeplay replays we need the exact starting board (challenge
+     replays regenerate from the seed instead). Snapshot before play. */
+  currentInitialBoard = board.map(row => row.slice());
+
+  /* 2.2 Disarm the seed now — cascades/refills use Math.random so live play
+     and replay stay consistent (both fill non-deterministically after the
+     seeded initial board). The initial layout is what's shared. */
+  seededRNG = null;
+
+  renderFullBoard();
+  initCapsules();
+
+  /* 2.3 Arm the ghost overlay if the player opted in and has a ghost. */
+  const today = getUTCDateKey();
+  if (mode === 'challenge' && ghostEnabled && bestChallengeReplay &&
+      bestChallengeReplay.date === today && bestChallengeReplay.log.length) {
+    ghostLog = bestChallengeReplay.log;
+    startGhostOverlay();
+  } else {
+    ghostLog = null;
+  }
+
+  startTimer();
+  startFlowDecay();
+  startHintTimer();
+  createConfetti();
+}
+function restartGame() {
+  hideGameMenu(); hideTimeUpModal();
+  clearTimeout(hintTimeout); stopTimer(); stopFlowDecay(); stopGhostOverlay();
+  boardEl.innerHTML = ''; effectsLayer.innerHTML = '';
+  document.getElementById('board-inner').classList.remove('replay-mode');
+  startGame(currentMode);
+}
+function endGame() {
+  gameActive = false; isReplaying = false;
+  stopTimer(); stopFlowDecay(); stopGhostOverlay(); clearTimeout(hintTimeout);
+  hideGameMenu(); hideTimeUpModal();
+  document.getElementById('board-inner').classList.remove('replay-mode');
+  document.getElementById('board-frame').classList.remove('challenge-mode');
+  showStartScreen();
+}
+function buyTime() {
+  /* Guardrail: never allow buying time in the Daily Challenge (Section 7). */
+  if (currentMode === 'challenge') return;
+  if (coins >= 20) {
+    coins -= 20; timeLeft += 15;
+    updateCoins(); updateTimer();
+    Sound.playClick(); Sound.playStart();
+    hideTimeUpModal();
+    gameActive = true; processing = false;
+    startTimer(); startFlowDecay(); startHintTimer();
+    saveData();
+  } else {
+    const btn = document.getElementById('buy-time-btn');
+    btn.style.animation = 'shake 0.35s ease';
+    setTimeout(() => btn.style.animation = '', 400);
+  }
+}
+function createConfetti() {
+  document.querySelectorAll('.confetti').forEach(el => el.remove());
+  const app = document.getElementById('app');
+  const colors = ['#ff6b9d', '#ffd93d', '#4ade80', '#60a5fa', '#f9a8d4', '#ffb347'];
+  for (let i = 0; i < 15; i++) {
+    const c = document.createElement('div');
+    c.className = 'confetti';
+    c.style.left = rand(5, 95) + '%';
+    c.style.background = pick(colors);
+    c.style.width = rand(3, 7) + 'px'; c.style.height = rand(3, 7) + 'px';
+    c.style.animationDuration = rand(8, 18) + 's';
+    c.style.animationDelay = rand(0, 15) + 's';
+    if (Math.random() > 0.5) c.style.borderRadius = '2px';
+    app.appendChild(c);
+  }
+}
+function updateSoundButtons() {
+  const text = Sound.enabled ? ' Sound ON' : ' Sound OFF';
+  document.getElementById('sound-toggle-start').textContent = text;
+  const menuToggle = document.getElementById('sound-toggle-menu');
+  if (menuToggle) menuToggle.textContent = text;
+}
+
+/* Init */
+function init() {
+  boardEl = document.getElementById('board');
+  scoreEl = document.getElementById('score-display');
+  timeEl = document.getElementById('time-display');
+  comboEl = document.getElementById('combo-display');
+  coinsEl = document.getElementById('coins-count');
+  xpFill = document.getElementById('xp-fill');
+  effectsLayer = document.getElementById('effects-layer');
+  capsulesRow = document.getElementById('capsules-row');
+  capsulesCountEl = document.getElementById('capsules-count');
+  bestEl = document.getElementById('best-display');
+  flowFillEl = document.getElementById('flow-fill');
+  flowMultEl = document.getElementById('flow-mult');
+  flowIconEl = document.getElementById('flow-icon');
+
+  loadSaveData();
+  checkDailyLogin();
+  ensureCompetitiveWeek();   // NEW - Section 2.1
+  saveData();
+
+  setupInput();
+  setupEventCarousel();
+  startEventTicker();
+  updateFlowUI();
+  updateTierBadge();         // NEW - Section 2.1
+
+  document.getElementById('start-btn').addEventListener('click', () => {
+    Sound.init(); Sound.resume(); startGame('freeplay');
+  });
+  /* Daily Challenge entry from start screen (NEW - Section 2.2). */
+  document.getElementById('start-challenge-btn').addEventListener('click', () => {
+    Sound.init(); Sound.resume(); Sound.playClick(); showChallengeModal();
+  });
+  /* Watch best freeplay replay from start screen (NEW - Section 2.3). */
+  document.getElementById('start-replay-btn').addEventListener('click', () => {
+    Sound.init(); Sound.resume(); Sound.playClick();
+    if (bestFreeplayReplay) playReplay(bestFreeplayReplay, 'freeplay');
+  });
+
+  document.getElementById('menu-btn').addEventListener('click', () => {
+    if (!gameActive && !document.getElementById('start-screen').classList.contains('hidden')) return;
+    Sound.playClick(); showGameMenu();
+  });
+  document.getElementById('restart-btn').addEventListener('click', () => { Sound.playClick(); restartGame(); });
+  document.getElementById('end-game-btn').addEventListener('click', () => { Sound.playClick(); endGame(); });
+  document.getElementById('close-menu-btn').addEventListener('click', () => { Sound.playClick(); hideGameMenu(); });
+  document.getElementById('buy-time-btn').addEventListener('click', buyTime);
+  document.getElementById('new-game-btn').addEventListener('click', () => { Sound.playClick(); restartGame(); });
+  document.getElementById('close-timesup-btn').addEventListener('click', () => { Sound.playClick(); endGame(); });
+
+  /* Result card export & replay (NEW - Section 2.3/2.4). */
+  document.getElementById('save-card-btn').addEventListener('click', () => { Sound.playClick(); saveResultCardImage(); });
+  document.getElementById('watch-replay-btn').addEventListener('click', () => {
+    Sound.playClick();
+    const replay = currentMode === 'challenge' ? bestChallengeReplay : bestFreeplayReplay;
+    // Prefer the run that just happened if it's stored as best; otherwise replay best.
+    if (replay) { hideTimeUpModal(); playReplay(replay, currentMode); }
+  });
+
+  document.getElementById('sound-toggle-start').addEventListener('click', (e) => {
+    e.stopPropagation();
+    Sound.init(); Sound.toggle(); updateSoundButtons();
+    if (Sound.enabled) Sound.playClick();
+  });
+  document.getElementById('sound-toggle-menu').addEventListener('click', () => {
+    Sound.toggle(); updateSoundButtons();
+    if (Sound.enabled) Sound.playClick();
+  });
+  document.getElementById('pet-store-btn').addEventListener('click', () => { Sound.playClick(); showPetShop(); });
+  document.getElementById('close-petshop-btn').addEventListener('click', () => { Sound.playClick(); hidePetShop(); });
+  document.getElementById('gear-store-btn').addEventListener('click', () => { Sound.playClick(); showGearShop(); });
+  document.getElementById('close-gearshop-btn').addEventListener('click', () => { Sound.playClick(); hideGearShop(); });
+
+  // Event buttons
+  document.getElementById('wheel-reward-btn').addEventListener('click', () => {
+    Sound.init(); Sound.resume(); Sound.playClick(); showWheelModal();
+  });
+  document.getElementById('wheel-spin-btn').addEventListener('click', () => {
+    Sound.init(); Sound.resume(); spinWheel();
+  });
+  document.getElementById('close-wheel-btn').addEventListener('click', () => {
+    Sound.playClick(); hideWheelModal();
+  });
+  document.getElementById('daily-reward-btn').addEventListener('click', () => {
+    Sound.init(); Sound.resume(); Sound.playClick(); claimDailyReward();
+  });
+
+  /* Daily Challenge card + modal wiring (NEW - Section 2.2/2.3). */
+  document.getElementById('challenge-btn').addEventListener('click', () => {
+    Sound.init(); Sound.resume(); Sound.playClick(); showChallengeModal();
+  });
+  document.getElementById('play-challenge-btn').addEventListener('click', () => {
+    Sound.playClick(); startGame('challenge');
+  });
+  document.getElementById('ghost-toggle').addEventListener('change', (e) => {
+    ghostEnabled = e.target.checked;
+  });
+  document.getElementById('challenge-replay-btn').addEventListener('click', () => {
+    Sound.playClick();
+    if (bestChallengeReplay) { hideChallengeModal(); playReplay(bestChallengeReplay, 'challenge'); }
+  });
+  document.getElementById('close-challenge-btn').addEventListener('click', () => {
+    Sound.playClick(); hideChallengeModal();
+  });
+
+  /* Leaderboard / tier modal wiring (NEW - Section 2.1). */
+  document.getElementById('leaderboard-btn').addEventListener('click', () => {
+    Sound.playClick(); showLeaderboardModal();
+  });
+  document.getElementById('tier-badge').addEventListener('click', () => {
+    Sound.playClick(); showLeaderboardModal();
+  });
+  document.getElementById('close-leaderboard-btn').addEventListener('click', () => {
+    Sound.playClick(); hideLeaderboardModal();
+  });
+
+  const outsideCloseMap = [
+    ['timesup-modal', () => { Sound.playClick(); endGame(); }],
+    ['game-menu-modal', () => { Sound.playClick(); hideGameMenu(); }],
+    ['pet-shop-modal', () => { Sound.playClick(); hidePetShop(); }],
+    ['gear-shop-modal', () => { Sound.playClick(); hideGearShop(); }],
+    ['wheel-modal', () => { if (!wheelSpinning) { Sound.playClick(); hideWheelModal(); } }],
+    ['challenge-modal', () => { Sound.playClick(); hideChallengeModal(); }],
+    ['leaderboard-modal', () => { Sound.playClick(); hideLeaderboardModal(); }],
+  ];
+  outsideCloseMap.forEach(([id, close]) => {
+    const overlay = document.getElementById(id);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  });
+
+  const resizeObserver = new ResizeObserver(() => {
+    if (gameActive) {
+      calculateLayout();
+      for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+        if (candyEls[r]?.[c]) {
+          const el = candyEls[r][c];
+          el.style.width = cellSize + 'px'; el.style.height = cellSize + 'px';
+          const pos = getPosition(r, c);
+          el.style.left = pos.left + 'px'; el.style.top = pos.top + 'px';
+        }
+      }
+    }
+  });
+  resizeObserver.observe(document.getElementById('game-container'));
+
+  updatePetIcon();
+  updateCoins();
+  updateXPDisplay();
+  updateBest();
+  const levelBadge = document.getElementById('level-badge');
+  if (levelBadge) levelBadge.textContent = `Lv ${playerLevel}`;
+
+  showStartScreen();
+  createConfetti();
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
